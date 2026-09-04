@@ -1,0 +1,140 @@
+First you install NetCode for GameObjects
+Most important component is Network Manager
+First thing to do after that is to choose Transport which is a layer below NetCode and handles lobies and relays.
+For example you can use Unity Transport which in this tutorial we use or later you can change it to steam transport if you want to publish the game in steam. you don't need to rewrite code.
+The gameobject that has network manager attached to, goes to DontDestroyOnLoad after running the game. because it need to live through out the scenes.
+
+We have three network topolgies. server client, host client, disterubted server. First one we have a build for server and one for client, second one, one is host and others connect to it, most coop games are like this, and third one is advanced and we can have multiple hosts etc.
+In this tutorial we use host client.
+
+The network manager has three buttons but we cover two. start host and start client.
+For testing purposes we start host on main unity windows, and install Multiplayer Play Mode Package which lets us spawn another unity windows.
+After installing: Window -> Multiplayer -> Multiplayer Play Mode
+and then we check Player 2 chechkbox.
+It is a seperate unity windows but they're connected. From layout we can add hireachy and Inspector windows and from there and network manager, we can start client.
+
+So rn nothing is happening. to see the connection and validate, we install Multiplayer tools. the create a gameobject called "RuntimeNetworkStatsMonitor" and attach an exact name component to it.
+Then after running, we can see stats on game windows. like ping etc.
+
+------------
+
+Next we made the grid.
+There are several approaches like using unity's grid, using ai, or the simplest, just using collisions.
+First we make grid ui and then in each sqaure we add another gameobject and give a boxcollider2d to it.
+then you create an script called GridPosition with 2 fields, X and Y to store the position. for example Squre 0,0
+In the code we can use OnMouseDown event, and write logic there, like printing X and Y. and when you click on collider, it gets print out.
+
+but also there's another way cooler way
+We can add an event system to hireachy, then adding Physics 2D Raycaster to camera so it can capture mouse interactions, and then in code we implement "IPointerDownHandler" interface or any other IPointer thingy
+And then we write code in its method. (It's something new that I learned!)
+ANYWAY
+We use that simpler approach in this course, which is OnMouseDown.
+
+------------
+
+Nothing much important that I don't know of was in this lecture.
+He basically talked about singleton and create a GameManager and a function to print out position of cells and he called it from each GridPosition OnMouseDown script.
+
+------------
+
+Ok this lecture was a bit hard. Basically we worked on Spawning objects. He seperated visuals from logic and made another class and gameobject called GameVisualManager. in this one you control all visuals like spawning object.
+In the GameManager, we made an event with x and y args and we invoke this event inside that "ClickedOnGridPosition"
+Then later in GameVisualManager we subscribe an method called "GameManager_OnClickedOnGridPosition" to this event. inside this method we do instantiating of objects(cross for now)
+we also made another method called "GetGridWorldPosition" which does some simple math to get the position of where to spawn.
+EVENT SYNTAX IS LIKE THIS:
+In GameManager we write these
+"public event EventHandler<OnClickedOnGridPositionEventArgs> OnClickedOnGridPosition;
+public class OnClickedOnGridPositionEventArgs : EventArgs
+{
+    public int x;
+    public int y;
+}"
+and in GameVisualManager we do this:
+"private void Start()
+{
+    GameManager.Instance.OnClickedOnGridPosition += GameManager_OnClickedOnGridPosition;
+}
+
+private void GameManager_OnClickedOnGridPosition(object sender, GameManager.OnClickedOnGridPositionEventArgs e)
+{
+    Instantiate(crossPrefab,GetGridWorldPosition(e.x,e.y),Quaternion.identity);
+}"
+
+But this isn't enough for making it to work through network.
+You need to add "Network Object" script to prefabs {(DOESN'T NEED 6.5 2026) and also create a "Network Prefab List"(In codemonkey video this option wasn't needed , maybe it's for version.) and assign prefabs to it and assign this thing to Network Manager.}
+then in code you need to access this "Network Object" and use spawn method to spawn it across network.
+"spawnedCrossTransform.GetComponent<NetworkObject>().Spawn(true);"
+The true means when scene changes, destroy it, which doesn't matter that much now.
+also he wanted to show something so it made the code like this:
+"Transform spawnedCrossTransform = Instantiate(crossPrefab);
+spawnedCrossTransform.GetComponent<NetworkObject>().Spawn(true);
+spawnedCrossTransform.position = GetGridWorldPosition(e.x, e.y);"
+
+And this caused the position not be correct on client. he said it's an important thing and I did it intentioanly and we will fix in next lectures.
+
+Only server is the source of truth and only it can do stuff. clients should send request to it if they want to do stuff and server needs to authortize and then do it.
+
+------------
+
+RPCs
+This sections was about RPCs which are basically messages that go from client to server and vise versa.
+previously we had problem that when clicked in client, it wouldn't spawn the cross. and that's because only server can spawn and do codes. so we tell it to send this request to server and make him run this piece of code. The way to doing this is very simple. Basically we create a method and we give it the attribute "Rpc" and it takes argument that to send who this method. "[Rpc(SendTo.Server)]" because we want server to be able to run this.
+Here's the method:
+"[Rpc(SendTo.Server)]
+private void SpawnObjectRpc(int x, int y)
+{
+    Transform spawnedCrossTransform = Instantiate(crossPrefab);
+    spawnedCrossTransform.GetComponent<NetworkObject>().Spawn(true);
+    spawnedCrossTransform.position = GetGridWorldPosition(x, y);
+}"
+After that we go and change extention from MonoBehavior to NetworkBehavior otherwise it won't work
+And then we must end the name of method which has "Rpc" attribute with "Rpc". For example "SpawnObject" -> "SpawnObjectRpc".
+And then we go and add Network Object to GameVisualManager because we need it to be on network and not locally.
+
+----------------------------
+
+This section was about Network Transform
+In multiplayer games you need explicity say what you want to sync and things don't get sync by default. That is because we want to use as less as bandwidth so we don't get charge so much. we also explicty say spawn in network for example.
+We add Network Transform component to object(prefabs) that we want like Cross and Circle in here and then we untick or tick transforms that we want for sharing in network. in this game we only need Position of X and Y.
+After that because of code and because we first spawn object and then change Transform(it's intentional for learning purposes) we see it smoothly goes from center to the correct spot, And this is called network transfrom interpolation and is normal. But in this game we don't want this behaviour and we remove the code and in instantiate method we go to our prevoius way and give position in there. this was all for learning purposes.
+
+-------------------------
+
+This section was really hard! It was about spawning the right object in server and client and also taking turns!
+Well first we use OnNetworkSpawn method
+we override it and it is in NetworkBehaviour which we change GameManager extend from monobahviour to. We also Add NetworkObject to GameManager in inspector.
+OnNetworkSpawn runs everytime That Object with NetworkObject Spawns.
+In this method with
+"NetworkManager.Singleton.LocalClientId"
+we can check the id. 0 is server and 1 and later are clients. we have only a server and a client in this game. so 0 server and 1 client
+We create an enum of PlayerType which has 3 values. None, Cross(Server), Circle(Client). then a private varible with its type and the name of localPlayerType and we create a getter for it. and in that OnNetworkSpawn Method we create if statements. if its 0 we set localPlayerType to cross and else to circle. "CodeMonkey did it with swtich but whatever"
+~In SpawnObjectRpc which is in GameVisualManager we use this "GetLocalPlayerType()" from GameManager and if it's cross we instaniate that and if circle, that.~
+but this method causes problems. because it only executes in server so it will always be cross!
+To solve this we need to pass arguments to the RPC method instead of getting it from somewhere. because this RPC method only gets executed in server.
+"private void SpawnObjectRpc(int x, int y,GameManager.PlayerType playerType)"
+and we also change its associated events and eventargs.
+and this part ends.
+
+For taking turns we create another private variable of enum PlayerType called currentPlayablePlayerType in GameManager
+There's a property in NetworkBehavior which shows if the executer of this code is Server or not. "IsServer". In OnNetworkSpawn callback method, we use it with if to set currentPlayablePlayerType to Cross which is server. This part won't get executed in clinet because it isn't server, but it is there.
+then we do the logic in ClickOnGridPosition. if GetLocalPlayerType() isn't same as currentPlayablePlayerType, we return so later code like that event and spawn and... won't happen. but we have a problem, currentPlayablePlayerType only is set on server, so in client it will be None. So we NEED to make this method an server RPC so it only runs there as it is a server authrotive game. and because it only runs in server, GetLocalPlayerType() will always return Cross which is server. to fix we need to pass parameter to it. just like previous problem. we go in where it gets called, and it is in GridPosition script and in there we pass GameManager.Instance.GetLocalPlayerType() as well. Now back in ClickedOnGridPosition, if current vs local are same, we do spawn and other stuff and in the end we do a simple swap algorithm. if its cross, current becomes circle and vise versa.
+
+----------------------------
+
+This section was about setting up PlayerUI
+we create a cross and a circle with two "you" texts below them representing which player you are which is cross for server and circle for client. server will have its own enabaled and client as well. two arrow representing which player turn is,  and they get disabled and enabled based on turn.
+after setting these up, we create an script called PlayerUI and attach it to PlayerUI GameObject. in it we get refrences to these ui elements and in Awake we disable them all.
+later we need to enable correct "you" text for host and client. we do it after game starts and for determining when game starts, we make a event in GameManager called OnGameStarted and we invoke it when 2 players are connected(host and client). for finding that out there's a callback event that runs everytime a client connects to server, it is called "NetworkManager.Singleton.OnClientConnectedCallback". we subscribe to this in IsServer part with this method "NetworkManager_OnClientConnectedCallback". and in there with "NetworkManager.Singleton.ConnectedClientsList.Count == 2" we check number of connected clients and if true, we invoke OnGameStarted.
+after that we sub to "GameManager.Instance.OnGameStarted" in PlayerUI with "GameManager_OnGameStarted" and in there we do GameManager.Instance.GetLocalPlayerType() and enable respecting texts. 
+but there's a problem, OnGameStarted event, only gets invoked in server because we did its tied previous logic in IsServer part. and that causes that "you" only works and get shown and enabled in server. to fix we need this event gets invoked in both server and client. to this we need to make a method with ClientsAndHost RPC. 
+"[Rpc(SendTo.ClientsAndHost)]
+private void TriggerOnGameStartedRpc()
+{
+    OnGameStarted?.Invoke(this, EventArgs.Empty);
+}"
+this method gets executed in both server and clients. and in this if "if (NetworkManager.Singleton.ConnectedClientsList.Count == 2)" we call this method. problem fixed.
+next is arrow image which shows current player. we need an event to understand when a turn changes so we do logic with it. the event is "OnCurrentPlayablePlayerTypeChanged" in game manager and it gets invoked at end of "ClickedOnGridPositionRpc" method when turns change. but just like previous one we need this to get invoked in both host and client. so we make an ClientsAndHost RPC with this method "TriggerOnCurrentPlayablePlayerTypeChangedRpc()" and invoke the event in there.
+in PlayerUI script we sub to this event with GameManager_OnCurrentPlayablePlayerTypeChanged method and in there we call UpdateCurrentArrow() method. the reason we made it into a seperate method is that we also need to update arrow at start.
+we expose and set a getter for currentPlayablePlayerType from game manager called GetCurrentPlayablePlayerType() and in UpdateCurrentArrow we use this info to do logic that which arrow should get disabled or enabled. BUT
+we have a problem. currentPlayablePlayerType only gets a value in server in IsServer part and its value is Cross, where client doesn't run this code and its value is set to None. so that causes it only gets updated in server and not in client. To FIX
+we can pass a currentPlayablePlayerType in ClickedOnGridPositionRpc in GameManager to UpdateCurrentArrow() through events and what not. just like we did before. BUT we can also do it with NetworkVariables which is Next lecture.
