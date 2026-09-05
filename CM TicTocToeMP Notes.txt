@@ -138,3 +138,17 @@ in PlayerUI script we sub to this event with GameManager_OnCurrentPlayablePlayer
 we expose and set a getter for currentPlayablePlayerType from game manager called GetCurrentPlayablePlayerType() and in UpdateCurrentArrow we use this info to do logic that which arrow should get disabled or enabled. BUT
 we have a problem. currentPlayablePlayerType only gets a value in server in IsServer part and its value is Cross, where client doesn't run this code and its value is set to None. so that causes it only gets updated in server and not in client. To FIX
 we can pass a currentPlayablePlayerType in ClickedOnGridPositionRpc in GameManager to UpdateCurrentArrow() through events and what not. just like we did before. BUT we can also do it with NetworkVariables which is Next lecture.
+
+----------------------------
+
+This part was about network variables. they sync a value in network. we can specify who writes and who reads, by default it is that everyone read and server writes. a network varibale can be of almost any type and MUST get initilized after creation.
+Here's the code:
+private NetworkVariable<PlayerType> currentPlayablePlayerType = new NetworkVariable<PlayerType>();
+we made currentPlayablePlayerType a network variable so it fixes our previous problem where client didn't know about this variable. we could use RPC parameters but this is for when we want to sync data automatically instead of writing RPCs and we have a simpler approach. for accessing their data we do:
+currentPlayablePlayerType.Value
+it has a callback for when its values changes. we used it to refactor OnCurrentPlayablePlayerTypeChanged event. this callback is a delegate and isn't a event so we can't just do += and let vs do stuff for us. we write it like this in OnNetworkSpawn after IsServer part (not inside it.):
+currentPlayablePlayerType.OnValueChanged += (PlayerType oldPlayerType, PlayerType newPlayerType) =>
+{
+    OnCurrentPlayablePlayerTypeChanged.Invoke(this, EventArgs.Empty);
+};
+we no longer need "TriggerOnCurrentPlayablePlayerTypeChangedRpc()" and its stuff.
